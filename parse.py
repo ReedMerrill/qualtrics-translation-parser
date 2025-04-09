@@ -4,13 +4,11 @@ import subprocess
 import json
 
 # load and clean translation file
-df = pd.read_csv("CMB 2025 - Genpop-EN-FR.csv")
-
-# TODO: Refactor to remove lines not starting with QID[0-9]*
-df = df.iloc[1:]  # Returns all rows starting from index 1
-df = df.iloc[:-2]
+df = pd.read_csv("cmb-2025-trans-fr.csv")
 
 df = df[["PhraseID", "FR"]]
+
+df = df[df["PhraseID"].str.match("^QID.*$")]
 
 # load survey spec
 with open("survey-spec.json", "r") as f:
@@ -39,7 +37,7 @@ condition = (
     | (df["FR"] == "Ne sais pas / Sans opinion")
     | (df["FR"] == "Ne sais pas")
     | (df["FR"] == "Pas d'opinion")
-    | ("Préfère ne pas répondre")
+    | (df["FR"] == "Préfère ne pas répondre")
 )
 df["Values"] = np.where(
     condition,
@@ -57,18 +55,25 @@ df["FR"] = df["FR"].str.replace(r"<style\b[^>]*>.*?<\/style>", "", regex=True)
 # table
 df["FR"] = df["FR"].str.replace(r"<table\b[^>]*>.*?<\/table>", "", regex=True)
 
+lines_out = []
+
+for row in df.itertuples(index=True):
+    if row.text_type == "QuestionText":
+        tag = tags[row.Attr]
+        lines_out.append(f"**{tag}** {row.FR}\n\n")
+    else:
+        lines_out.append(f"- {row.FR} ({row.Values})\n\n")
+    prev_row = row
+
 out_name = "out.md"
 
 with open(out_name, "w", encoding="UTF-8") as file:
-    for row in df.itertuples(index=True):
-        if row.text_type == "QuestionText":
-            tag = tags[row.Attr]
-            file.write(f"### {row.PhraseID}\n\n**{tag}** {row.FR}\n\n")
-        else:
-            file.write(f"- {row.FR} ({row.Values})\n\n")
+    for line in lines_out:
+        file.write(line)
 
 cmd = "pandoc " + out_name + " -o out.docx"
 
 subprocess.run(cmd, shell=True)
 
+# TEST:
 df.to_csv("data.csv", index=False)
